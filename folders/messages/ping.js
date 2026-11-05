@@ -7,6 +7,7 @@ const {
 } = require("discord.js");
 
 const mongoose = require("mongoose");
+const { version } = require("discord.js");
 
 function formatUptime(seconds) {
     const days = Math.floor(seconds / 86400);
@@ -34,65 +35,71 @@ module.exports = {
         const sent = await message.reply("Pinging...");
 
         const botPing = sent.createdTimestamp - message.createdTimestamp;
-        const apiPing = Math.round(client.ws.ping);
 
-        const mongoConnected = mongoose.connection.readyState === 1;
-        const mongoStatus = mongoConnected ? "Connected" : "Disconnected";
+        const updateStatus = async () => {
+            const apiPing = Math.round(client.ws.ping);
 
-        const uptime = formatUptime(process.uptime());
+            const mongoConnected = mongoose.connection.readyState === 1;
+            const mongoStatus = mongoConnected
+                ? "Connected"
+                : "Disconnected";
 
-        const memory = process.memoryUsage();
+            const uptime = formatUptime(process.uptime());
+            const memory = process.memoryUsage();
 
-        const serverCount = client.guilds.cache.size;
-        const userCount = client.guilds.cache.reduce(
-            (total, guild) => total + guild.memberCount,
-            0
-        );
-
-        const container = new ContainerBuilder()
-            .setAccentColor(mongoConnected ? 0x57F287 : 0xED4245)
-            .addTextDisplayComponents(t =>
-                t.setContent("## 🏓 Pong!")
-            )
-            .addSeparatorComponents(s =>
-                s.setDivider(true)
-                    .setSpacing(SeparatorSpacingSize.Small)
-            )
-            .addTextDisplayComponents(t =>
-                t.setContent(
-                    `### Connection\n` +
-                    `**Bot Latency:** ${botPing}ms\n` +
-                    `**API Latency:** ${apiPing}ms\n` +
-                    `**MongoDB:** ${mongoStatus}`
+            const container = new ContainerBuilder()
+                .setAccentColor(mongoConnected ? 0x57F287 : 0xED4245)
+                .addTextDisplayComponents(t =>
+                    t.setContent("## 🏓 Pong!")
                 )
-            )
-            .addSeparatorComponents(s =>
-                s.setDivider(true)
-                    .setSpacing(SeparatorSpacingSize.Small)
-            )
-            .addTextDisplayComponents(t =>
-                t.setContent(
-                    `### Bot Statistics\n` +
-                    `**Uptime:** ${uptime}\n` 
+                .addSeparatorComponents(s =>
+                    s.setDivider(true)
+                        .setSpacing(SeparatorSpacingSize.Small)
                 )
-            )
-            .addSeparatorComponents(s =>
-                s.setDivider(true)
-                    .setSpacing(SeparatorSpacingSize.Small)
-            )
-            .addTextDisplayComponents(t =>
-                t.setContent(
-                    `### System\n` +
-                    `**Memory Usage:** ${formatMemory(memory.rss)}\n` +
-                    `**Node.js:** ${process.version}\n` +
-                    `**Discord.js:** ${require("discord.js").version}`
+                .addTextDisplayComponents(t =>
+                    t.setContent(
+                        `### Connection\n` +
+                        `**Bot Latency:** ${botPing}ms\n` +
+                        `**API Latency:** ${apiPing}ms\n` +
+                        `**MongoDB:** ${mongoStatus}\n` +
+                        `**Uptime:** ${uptime}`
+                    )
                 )
-            );
+                .addSeparatorComponents(s =>
+                    s.setDivider(true)
+                        .setSpacing(SeparatorSpacingSize.Small)
+                )
+                .addTextDisplayComponents(t =>
+                    t.setContent(
+                        `### System\n` +
+                        `**Memory Usage:** ${formatMemory(memory.rss)}\n` +
+                        `**Node.js:** ${process.version}\n` +
+                        `**Discord.js:** ${version}`
+                    )
+                );
 
-        await sent.edit({
-            content: "",
-            components: [container],
-            flags: MessageFlags.IsComponentsV2,
+            await sent.edit({
+                content: "",
+                components: [container],
+                flags: MessageFlags.IsComponentsV2,
+            });
+        };
+
+        await updateStatus();
+
+        const interval = setInterval(async () => {
+            try {
+                await updateStatus();
+            } catch (error) {
+                console.error("[PING] Failed to update status:", error);
+                clearInterval(interval);
+            }
+        }, 1000);
+
+        const collector = sent.createMessageComponentCollector({
+            time: 15 * 60 * 1000,
         });
+
+        collector.on("end", () => clearInterval(interval));
     },
 };
